@@ -191,13 +191,19 @@ public final class MainActivity extends Activity {
                     float viewportHeight = (float) point.getDouble(3);
                     float x = (float) point.getDouble(0) * webView.getWidth() / viewportWidth;
                     float y = (float) point.getDouble(1) * webView.getHeight() / viewportHeight;
-                    dispatchWebViewTap(x, y);
+                    clickInnerPlayButtonOrTapCenter(x, y);
                     return;
                 }
             } catch (org.json.JSONException ignored) {
                 Log.d("FormulerRemote", "Could not decode focused player coordinates: " + value);
             }
             fallback.run();
+        });
+    }
+
+    private void clickInnerPlayButtonOrTapCenter(float x, float y) {
+        webView.evaluateJavascript(DIRECT_PLAY_CLICK_SCRIPT, clicked -> {
+            if (!"true".equals(clicked)) dispatchWebViewTap(x, y);
         });
     }
 
@@ -266,6 +272,17 @@ public final class MainActivity extends Activity {
             "var centerX=rect.left+(rect.width/2),centerY=rect.top+(rect.height/2);" +
             "return [centerX,centerY,window.innerWidth,window.innerHeight]" +
             "})();";
+
+    private static final String DIRECT_PLAY_CLICK_SCRIPT = "(function(){" +
+            "var q='.vjs-big-play-button,.plyr__control--overlaid,.play-button,.play-btn,[aria-label*=\\\"Play\\\"],[title*=\\\"Play\\\"]';" +
+            "function full(v){if(!v)return;var f=v.requestFullscreen||v.webkitRequestFullscreen||v.webkitEnterFullscreen;if(f)try{var p=f.call(v);if(p&&p.catch)p.catch(function(){})}catch(e){}}" +
+            "var active=document.activeElement,playBtn=(active&&active.querySelector&&active.querySelector(q))||document.querySelector(q);" +
+            "if(playBtn){playBtn.click();full((playBtn.closest('.video,.player,[class*=player]')||document).querySelector('video'));return true}" +
+            "var iframe=active&&active.tagName==='IFRAME'?active:document.querySelector('iframe');" +
+            "if(iframe)try{var idoc=iframe.contentWindow.document,inner=idoc.querySelector('video,.play-btn,[aria-label*=\\\"Play\\\"]');if(inner){inner.click();full(inner.tagName==='VIDEO'?inner:idoc.querySelector('video'));return true}}catch(e){}" +
+            "var video=(active&&active.querySelector&&active.querySelector('video'))||document.querySelector('video');" +
+            "if(video){var p=video.play();if(p&&p.catch)p.catch(function(){});full(video);return true}" +
+            "return false})();";
 
     /**
      * Searches the main document and all same-origin player frames. Cross-origin
