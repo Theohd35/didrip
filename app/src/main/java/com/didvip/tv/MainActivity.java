@@ -4,8 +4,11 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.util.Log;
+import android.view.InputDevice;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowInsets;
@@ -128,7 +131,7 @@ public final class MainActivity extends Activity {
         }
         if (isMediaPlaybackKey(event.getKeyCode())) {
             if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
-                playVideoFullscreen(false);
+                tapFocusedPlayerOrElse(() -> playVideoFullscreen(false));
             }
             // Consume both down and up so Android does not also route the key to a
             // second media session after the WebView has handled it.
@@ -138,8 +141,8 @@ public final class MainActivity extends Activity {
             if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
                 // The first OK on Regarder switches tabs and focuses the revealed
                 // player. A second OK, now inside that player, starts playback.
-                webView.evaluateJavascript(
-                        "window.__didVipActivate&&window.__didVipActivate()", null);
+                tapFocusedPlayerOrElse(() -> webView.evaluateJavascript(
+                        "window.__didVipActivate&&window.__didVipActivate()", null));
             }
             return true;
         }
@@ -179,6 +182,41 @@ public final class MainActivity extends Activity {
                 null);
     }
 
+    private void tapFocusedPlayerOrElse(Runnable fallback) {
+        webView.evaluateJavascript(FOCUSED_PLAYER_RECT_SCRIPT, value -> {
+            try {
+                if (value != null && !"null".equals(value)) {
+                    org.json.JSONArray point = new org.json.JSONArray(value);
+                    float x = (float) point.getDouble(0) * webView.getWidth();
+                    float y = (float) point.getDouble(1) * webView.getHeight();
+                    dispatchWebViewTap(x, y);
+                    return;
+                }
+            } catch (org.json.JSONException ignored) {
+                Log.d("FormulerRemote", "Could not decode focused player coordinates: " + value);
+            }
+            fallback.run();
+        });
+    }
+
+    private void dispatchWebViewTap(float x, float y) {
+        long downTime = SystemClock.uptimeMillis();
+        MotionEvent down = MotionEvent.obtain(downTime, downTime,
+                MotionEvent.ACTION_DOWN, x, y, 0);
+        down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+        webView.dispatchTouchEvent(down);
+        down.recycle();
+
+        webView.postDelayed(() -> {
+            long upTime = SystemClock.uptimeMillis();
+            MotionEvent up = MotionEvent.obtain(downTime, upTime,
+                    MotionEvent.ACTION_UP, x, y, 0);
+            up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+            webView.dispatchTouchEvent(up);
+            up.recycle();
+        }, 50L);
+    }
+
     @Override public void onBackPressed() {
         if (fullscreenView != null) hideFullscreenVideo();
         else if (webView.canGoBack()) webView.goBack();
@@ -216,6 +254,14 @@ public final class MainActivity extends Activity {
             "function fullVideo(v){if(!v)return;var f=v.requestFullscreen||v.webkitRequestFullscreen||v.webkitEnterFullscreen;if(f)try{var p=f.call(v);if(p&&p.catch)p.catch(function(){})}catch(x){}}" +
             "document.addEventListener('play',function(e){if(e.target.tagName==='VIDEO'){fullVideo(e.target);if(window.DidVipTV)DidVipTV.playbackStarted()}},true);" +
             "setTimeout(function(){var a=items();if(a.length)focus(a[0])},250);" +
+            "})();";
+
+    private static final String FOCUSED_PLAYER_RECT_SCRIPT = "(function(){" +
+            "var e=document.activeElement;if(!e)return null;" +
+            "var q='.play-btn,.btn-play,[data-action=play],.vjs-big-play-button,.plyr__control[data-plyr=play],video,iframe,.video,.player,[class*=player]';" +
+            "if(!(e.matches(q)||e.closest('.video,.player,[class*=player]')))return null;" +
+            "var r=e.getBoundingClientRect();if(r.width<2||r.height<2)return null;" +
+            "return [(r.left+r.width/2)/window.innerWidth,(r.top+r.height/2)/window.innerHeight]" +
             "})();";
 
     /**
