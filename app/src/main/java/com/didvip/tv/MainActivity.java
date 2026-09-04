@@ -136,12 +136,12 @@ public final class MainActivity extends Activity {
         }
         if (isOkKey(event.getKeyCode())) {
             if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
-                // The script itself checks that focus is on Regarder, a video, or
-                // a player container. Keep routing the key to WebView as well so
-                // OK continues to activate every other focused menu item.
-                playVideoFullscreen(true);
+                // The first OK on Regarder switches tabs and focuses the revealed
+                // player. A second OK, now inside that player, starts playback.
+                webView.evaluateJavascript(
+                        "window.__didVipActivate&&window.__didVipActivate()", null);
             }
-            return super.dispatchKeyEvent(event);
+            return true;
         }
         if (event.getAction() == KeyEvent.ACTION_DOWN && fullscreenView == null) {
             String direction = null;
@@ -206,10 +206,13 @@ public final class MainActivity extends Activity {
             "var q='a[href],button,input,select,textarea,[role=button],[tabindex],video';" +
             "function visible(e){var r=e.getBoundingClientRect(),c=getComputedStyle(e);return r.width>2&&r.height>2&&c.visibility!='hidden'&&c.display!='none'}" +
             "function items(){return Array.prototype.filter.call(document.querySelectorAll(q),visible)}" +
-            "function focus(e){document.querySelectorAll('.didvip-tv-focus').forEach(function(x){x.classList.remove('didvip-tv-focus')});e.classList.add('didvip-tv-focus');e.focus({preventScroll:true});e.scrollIntoView({block:'center',inline:'center',behavior:'smooth'})}" +
-            "window.__didVipMove=function(d){var a=items();if(!a.length)return false;var cur=document.activeElement;if(a.indexOf(cur)<0){focus(a[0]);return true}var r=cur.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,b=null,score=1/0;a.forEach(function(e){if(e===cur)return;var x=e.getBoundingClientRect(),dx=x.left+x.width/2-cx,dy=x.top+x.height/2-cy;if((d=='left'&&dx>=-2)||(d=='right'&&dx<=2)||(d=='up'&&dy>=-2)||(d=='down'&&dy<=2))return;var primary=(d=='left'||d=='right')?Math.abs(dx):Math.abs(dy),cross=(d=='left'||d=='right')?Math.abs(dy):Math.abs(dx),v=primary+cross*2.5;if(v<score){score=v;b=e}});if(b)focus(b);return !!b};" +
+            "function focus(e){document.querySelectorAll('.didvip-tv-focus').forEach(function(x){x.classList.remove('didvip-tv-focus')});e.classList.add('didvip-tv-focus');if(!e.hasAttribute('tabindex')&&!/^(A|BUTTON|INPUT|SELECT|TEXTAREA|VIDEO|IFRAME)$/.test(e.tagName))e.setAttribute('tabindex','-1');e.focus({preventScroll:true});e.scrollIntoView({block:'center',inline:'center',behavior:'smooth'})}" +
+            "var focusAttempt=0;window.__didVipMove=function(d){focusAttempt++;var a=items();if(!a.length)return false;var cur=document.activeElement;if(a.indexOf(cur)<0){focus(a[0]);return true}var r=cur.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,b=null,score=1/0;a.forEach(function(e){if(e===cur)return;var x=e.getBoundingClientRect(),dx=x.left+x.width/2-cx,dy=x.top+x.height/2-cy;if((d=='left'&&dx>=-2)||(d=='right'&&dx<=2)||(d=='up'&&dy>=-2)||(d=='down'&&dy<=2))return;var primary=(d=='left'||d=='right')?Math.abs(dx):Math.abs(dy),cross=(d=='left'||d=='right')?Math.abs(dy):Math.abs(dx),v=primary+cross*2.5;if(v<score){score=v;b=e}});if(b)focus(b);return !!b};" +
+            "function playerTarget(){var a=Array.prototype.slice.call(document.querySelectorAll('.play-btn,.btn-play,[data-action=play],.vjs-big-play-button,.plyr__control[data-plyr=play],video,iframe,.video,.player,[class*=player]'));return a.find(visible)}" +
+            "function inPlayer(e){return !!(e&&(e.matches('.play-btn,.btn-play,[data-action=play],.vjs-big-play-button,.plyr__control[data-plyr=play],video,iframe,.video,.player,[class*=player]')||e.closest('.video,.player,[class*=player]')))}" +
+            "function startPlayer(e){var v=document.querySelector('video');if(!v&&e&&e.tagName==='IFRAME')try{v=e.contentDocument.querySelector('video')}catch(x){}if(v){try{var p=v.play();if(p&&p.catch)p.catch(function(){})}catch(x){}fullVideo(v)}else if(e)e.click();if(window.DidVipTV)DidVipTV.playbackStarted()}" +
+            "window.__didVipActivate=function(){var a=document.activeElement,label=((a&&a.textContent)||'')+' '+((a&&a.getAttribute&&a.getAttribute('aria-label'))||'');if(/regarder/i.test(label)&&!inPlayer(a)){a.click();var token=++focusAttempt,tries=0;function seek(){if(token!==focusAttempt)return;var p=playerTarget();if(p){focus(p);return}if(++tries<4)setTimeout(seek,250)}setTimeout(seek,75);return 'tab'}if(inPlayer(a)){startPlayer(a);return 'player'}if(a&&a.click)a.click();return 'click'};" +
             "document.addEventListener('focusin',function(e){if(e.target.matches&&e.target.matches(q))focus(e.target)},true);" +
-            "document.addEventListener('click',function(e){var t=e.target.closest&&e.target.closest(q);if(t&&/regarder/i.test((t.innerText||t.textContent||'').trim())){if(window.DidVipTV)DidVipTV.playbackStarted();fullVideo(document.querySelector('video'))}},true);" +
             "function fullVideo(v){if(!v)return;var f=v.requestFullscreen||v.webkitRequestFullscreen||v.webkitEnterFullscreen;if(f)try{var p=f.call(v);if(p&&p.catch)p.catch(function(){})}catch(x){}}" +
             "document.addEventListener('play',function(e){if(e.target.tagName==='VIDEO'){fullVideo(e.target);if(window.DidVipTV)DidVipTV.playbackStarted()}},true);" +
             "setTimeout(function(){var a=items();if(a.length)focus(a[0])},250);" +
