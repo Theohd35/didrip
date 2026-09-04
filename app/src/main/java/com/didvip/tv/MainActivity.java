@@ -264,8 +264,6 @@ public final class MainActivity extends Activity {
             "if(!(e.matches(q)||e.closest('.video,.player,[class*=player]')))return null;" +
             "var rect=e.getBoundingClientRect();if(rect.width<2||rect.height<2)return null;" +
             "var centerX=rect.left+(rect.width/2),centerY=rect.top+(rect.height/2);" +
-            "function videoIn(n){var v=n.matches&&n.matches('video')?n:n.querySelector&&n.querySelector('video');if(v)return v;var frames=n.matches&&n.matches('iframe')?[n]:(n.querySelectorAll?Array.prototype.slice.call(n.querySelectorAll('iframe')):[]);for(var i=0;i<frames.length;i++)try{v=frames[i].contentDocument&&frames[i].contentDocument.querySelector('video');if(v)return v}catch(x){}return null}" +
-            "var v=videoIn(e);if(v){try{if(v.paused){var p=v.play();if(p&&p.catch)p.catch(function(){})}var f=v.requestFullscreen||v.webkitRequestFullscreen||v.webkitEnterFullscreen;if(f){var fp=f.call(v);if(fp&&fp.catch)fp.catch(function(){})}}catch(x){}if(window.DidVipTV)DidVipTV.playbackStarted()}" +
             "return [centerX,centerY,window.innerWidth,window.innerHeight]" +
             "})();";
 
