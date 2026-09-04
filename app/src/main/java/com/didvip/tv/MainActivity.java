@@ -55,6 +55,8 @@ public final class MainActivity extends Activity {
     private void configureWebView() {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        settings.setSupportMultipleWindows(false);
         settings.setDomStorageEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
@@ -64,7 +66,7 @@ public final class MainActivity extends Activity {
         settings.setDisplayZoomControls(false);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         settings.setUserAgentString(settings.getUserAgentString() + " AndroidTV Formuler-Z11-Pro-Max");
         webView.addJavascriptInterface(new TvBridge(), "DidVipTV");
 
@@ -141,8 +143,7 @@ public final class MainActivity extends Activity {
             if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
                 // The first OK on Regarder switches tabs and focuses the revealed
                 // player. A second OK, now inside that player, starts playback.
-                tapFocusedPlayerOrElse(() -> webView.evaluateJavascript(
-                        "window.__didVipActivate&&window.__didVipActivate()", null));
+                tapFocusedPlayerOrElse(this::activateFocusedElement);
             }
             return true;
         }
@@ -184,27 +185,30 @@ public final class MainActivity extends Activity {
 
     private void tapFocusedPlayerOrElse(Runnable fallback) {
         webView.evaluateJavascript(FOCUSED_PLAYER_RECT_SCRIPT, value -> {
-            try {
-                if (value != null && !"null".equals(value)) {
-                    org.json.JSONArray point = new org.json.JSONArray(value);
-                    float viewportWidth = (float) point.getDouble(2);
-                    float viewportHeight = (float) point.getDouble(3);
-                    float x = (float) point.getDouble(0) * webView.getWidth() / viewportWidth;
-                    float y = (float) point.getDouble(1) * webView.getHeight() / viewportHeight;
-                    clickInnerPlayButtonOrTapCenter(x, y);
-                    return;
-                }
-            } catch (org.json.JSONException ignored) {
-                Log.d("FormulerRemote", "Could not decode focused player coordinates: " + value);
+            if (value != null && !"null".equals(value)) {
+                clickInnerPlayButtonAndTapViewportCenter();
+                return;
             }
             fallback.run();
         });
     }
 
-    private void clickInnerPlayButtonOrTapCenter(float x, float y) {
-        webView.evaluateJavascript(DIRECT_PLAY_CLICK_SCRIPT, clicked -> {
-            if (!"true".equals(clicked)) dispatchWebViewTap(x, y);
+    private void activateFocusedElement() {
+        webView.evaluateJavascript("window.__didVipActivate&&window.__didVipActivate()", result -> {
+            if ("\"regarder\"".equals(result)) {
+                webView.postDelayed(this::tapViewportCenter, 350L);
+            }
         });
+    }
+
+    private void clickInnerPlayButtonAndTapViewportCenter() {
+        webView.evaluateJavascript(DIRECT_PLAY_CLICK_SCRIPT, ignored -> tapViewportCenter());
+    }
+
+    private void tapViewportCenter() {
+        if (fullscreenView == null) {
+            dispatchWebViewTap(webView.getWidth() / 2f, webView.getHeight() / 2f);
+        }
     }
 
     private void dispatchWebViewTap(float x, float y) {
@@ -257,7 +261,9 @@ public final class MainActivity extends Activity {
             "function playerTarget(){var a=Array.prototype.slice.call(document.querySelectorAll('.play-btn,.btn-play,[data-action=play],.vjs-big-play-button,.plyr__control[data-plyr=play],video,iframe,.video,.player,[class*=player]'));return a.find(visible)}" +
             "function inPlayer(e){return !!(e&&(e.matches('.play-btn,.btn-play,[data-action=play],.vjs-big-play-button,.plyr__control[data-plyr=play],video,iframe,.video,.player,[class*=player]')||e.closest('.video,.player,[class*=player]')))}" +
             "function startPlayer(e){var v=document.querySelector('video');if(!v&&e&&e.tagName==='IFRAME')try{v=e.contentDocument.querySelector('video')}catch(x){}if(v){try{var p=v.play();if(p&&p.catch)p.catch(function(){})}catch(x){}fullVideo(v)}else if(e)e.click();if(window.DidVipTV)DidVipTV.playbackStarted()}" +
-            "window.__didVipActivate=function(){var a=document.activeElement,label=((a&&a.textContent)||'')+' '+((a&&a.getAttribute&&a.getAttribute('aria-label'))||'');if(/regarder/i.test(label)&&!inPlayer(a)){a.click();var token=++focusAttempt,tries=0;function seek(){if(token!==focusAttempt)return;var p=playerTarget();if(p){focus(p);return}if(++tries<4)setTimeout(seek,250)}setTimeout(seek,75);return 'tab'}if(inPlayer(a)){startPlayer(a);return 'player'}if(a&&a.click)a.click();return 'click'};" +
+            "function frameDocs(w,out){out.push(w.document);var frames=w.document.querySelectorAll('iframe');for(var i=0;i<frames.length;i++)try{if(frames[i].contentWindow&&frames[i].contentDocument)frameDocs(frames[i].contentWindow,out)}catch(x){}return out}" +
+            "function launchPlayer(){var ds=frameDocs(window,[]);for(var i=0;i<ds.length;i++){var el=ds[i].querySelector('video,.vjs-big-play-button,.play-btn');if(!el)continue;if(el.tagName==='VIDEO'){try{var p=el.play();if(p&&p.catch)p.catch(function(){})}catch(x){}fullVideo(el)}else{el.click();fullVideo(ds[i].querySelector('video'))}if(window.DidVipTV)DidVipTV.playbackStarted();return true}return false}" +
+            "window.__didVipActivate=function(){var a=document.activeElement,label=((a&&a.textContent)||'')+' '+((a&&a.getAttribute&&a.getAttribute('aria-label'))||'');if(/regarder/i.test(label)&&!inPlayer(a)){a.click();var token=++focusAttempt,tries=0;function seek(){if(token!==focusAttempt)return;var p=playerTarget();if(p)focus(p);if(launchPlayer()||++tries>=4)return;setTimeout(seek,250)}setTimeout(seek,75);return 'regarder'}if(inPlayer(a)){launchPlayer()||startPlayer(a);return 'player'}if(a&&a.click)a.click();return 'click'};" +
             "document.addEventListener('focusin',function(e){if(e.target.matches&&e.target.matches(q))focus(e.target)},true);" +
             "function fullVideo(v){if(!v)return;var f=v.requestFullscreen||v.webkitRequestFullscreen||v.webkitEnterFullscreen;if(f)try{var p=f.call(v);if(p&&p.catch)p.catch(function(){})}catch(x){}}" +
             "document.addEventListener('play',function(e){if(e.target.tagName==='VIDEO'){fullVideo(e.target);if(window.DidVipTV)DidVipTV.playbackStarted()}},true);" +
