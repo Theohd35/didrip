@@ -6,7 +6,6 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
@@ -122,6 +121,14 @@ public final class MainActivity extends Activity {
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        if (isMediaPlaybackKey(event.getKeyCode())) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                playVideoFullscreen();
+            }
+            // Consume both down and up so Android does not also route the key to a
+            // second media session after the WebView has handled it.
+            return true;
+        }
         if (event.getAction() == KeyEvent.ACTION_DOWN && fullscreenView == null) {
             String direction = null;
             if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_UP) direction = "up";
@@ -134,6 +141,20 @@ public final class MainActivity extends Activity {
             }
         }
         return super.dispatchKeyEvent(event);
+    }
+
+    private static boolean isMediaPlaybackKey(int keyCode) {
+        return keyCode == KeyEvent.KEYCODE_MEDIA_PLAY
+                || keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE
+                || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                || keyCode == KeyEvent.KEYCODE_HEADSETHOOK;
+    }
+
+    private void playVideoFullscreen() {
+        // Keep the native chrome immersive even when a player does not expose the
+        // HTML fullscreen API. onShowCustomView handles players that do expose it.
+        enterImmersiveMode();
+        webView.evaluateJavascript(PLAY_FULLSCREEN_SCRIPT, null);
     }
 
     @Override public void onBackPressed() {
@@ -170,5 +191,20 @@ public final class MainActivity extends Activity {
             "function fullVideo(v){if(!v)return;var f=v.requestFullscreen||v.webkitRequestFullscreen||v.webkitEnterFullscreen;if(f)try{var p=f.call(v);if(p&&p.catch)p.catch(function(){})}catch(x){}}" +
             "document.addEventListener('play',function(e){if(e.target.tagName==='VIDEO'){fullVideo(e.target);if(window.DidVipTV)DidVipTV.playbackStarted()}},true);" +
             "setTimeout(function(){var a=items();if(a.length)focus(a[0])},250);" +
+            "})();";
+
+    /**
+     * Searches the main document and all same-origin player frames. Cross-origin
+     * frames are intentionally skipped by the browser's same-origin policy; for
+     * those players the script clicks their visible iframe/player control fallback.
+     */
+    private static final String PLAY_FULLSCREEN_SCRIPT = "(function(){" +
+            "function docs(w,out){out.push(w.document);var f=w.document.querySelectorAll('iframe');for(var i=0;i<f.length;i++){try{if(f[i].contentWindow&&f[i].contentDocument)docs(f[i].contentWindow,out)}catch(e){}}return out}" +
+            "function full(v){var f=v.requestFullscreen||v.webkitRequestFullscreen||v.webkitEnterFullscreen;if(f)try{var p=f.call(v);if(p&&p.catch)p.catch(function(){})}catch(e){}}" +
+            "var all=docs(window,[]),v=null;for(var i=0;i<all.length&&!v;i++)v=all[i].querySelector('video');" +
+            "if(v){try{var p=v.play();if(p&&p.catch)p.catch(function(){})}catch(e){}full(v);if(window.DidVipTV)DidVipTV.playbackStarted();return 'video'}" +
+            "var q='button,[role=button],[aria-label],.play,.play-button,.vjs-big-play-button,.jw-icon-playback';" +
+            "for(var d=0;d<all.length;d++){var b=all[d].querySelectorAll(q);for(var j=0;j<b.length;j++){var t=((b[j].getAttribute('aria-label')||'')+' '+(b[j].textContent||'')+' '+(b[j].className||'')).toLowerCase();if(/play|lecture|regarder/.test(t)){b[j].click();if(window.DidVipTV)DidVipTV.playbackStarted();return 'control'}}}" +
+            "var frame=document.querySelector('iframe');if(frame){frame.focus();frame.click();return 'iframe'}return 'none'" +
             "})();";
 }
