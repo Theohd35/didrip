@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.Window;
@@ -121,13 +122,25 @@ public final class MainActivity extends Activity {
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getAction() == KeyEvent.ACTION_DOWN) {
+            Log.d("FormulerRemote", "Pressed KeyCode: " + event.getKeyCode());
+        }
         if (isMediaPlaybackKey(event.getKeyCode())) {
             if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
-                playVideoFullscreen();
+                playVideoFullscreen(false);
             }
             // Consume both down and up so Android does not also route the key to a
             // second media session after the WebView has handled it.
             return true;
+        }
+        if (isOkKey(event.getKeyCode())) {
+            if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+                // The script itself checks that focus is on Regarder, a video, or
+                // a player container. Keep routing the key to WebView as well so
+                // OK continues to activate every other focused menu item.
+                playVideoFullscreen(true);
+            }
+            return super.dispatchKeyEvent(event);
         }
         if (event.getAction() == KeyEvent.ACTION_DOWN && fullscreenView == null) {
             String direction = null;
@@ -147,14 +160,22 @@ public final class MainActivity extends Activity {
         return keyCode == KeyEvent.KEYCODE_MEDIA_PLAY
                 || keyCode == KeyEvent.KEYCODE_MEDIA_PAUSE
                 || keyCode == KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
-                || keyCode == KeyEvent.KEYCODE_HEADSETHOOK;
+                || keyCode == KeyEvent.KEYCODE_HEADSETHOOK
+                || keyCode == KeyEvent.KEYCODE_PROG_RED
+                || keyCode == KeyEvent.KEYCODE_BUTTON_A;
     }
 
-    private void playVideoFullscreen() {
+    private static boolean isOkKey(int keyCode) {
+        return keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER;
+    }
+
+    private void playVideoFullscreen(boolean requireFocusedTarget) {
         // Keep the native chrome immersive even when a player does not expose the
         // HTML fullscreen API. onShowCustomView handles players that do expose it.
         enterImmersiveMode();
-        webView.evaluateJavascript(PLAY_FULLSCREEN_SCRIPT, null);
+        webView.evaluateJavascript(
+                PLAY_FULLSCREEN_SCRIPT.replace("__REQUIRE_FOCUS__", Boolean.toString(requireFocusedTarget)),
+                null);
     }
 
     @Override public void onBackPressed() {
@@ -198,12 +219,13 @@ public final class MainActivity extends Activity {
      * frames are intentionally skipped by the browser's same-origin policy; for
      * those players the script clicks their visible iframe/player control fallback.
      */
-    private static final String PLAY_FULLSCREEN_SCRIPT = "(function(){" +
+    private static final String PLAY_FULLSCREEN_SCRIPT = "(function(){var requireFocus=__REQUIRE_FOCUS__;" +
             "function docs(w,out){out.push(w.document);var f=w.document.querySelectorAll('iframe');for(var i=0;i<f.length;i++){try{if(f[i].contentWindow&&f[i].contentDocument)docs(f[i].contentWindow,out)}catch(e){}}return out}" +
             "function full(v){var f=v.requestFullscreen||v.webkitRequestFullscreen||v.webkitEnterFullscreen;if(f)try{var p=f.call(v);if(p&&p.catch)p.catch(function(){})}catch(e){}}" +
-            "var all=docs(window,[]),v=null;for(var i=0;i<all.length&&!v;i++)v=all[i].querySelector('video');" +
-            "if(v){try{var p=v.play();if(p&&p.catch)p.catch(function(){})}catch(e){}full(v);if(window.DidVipTV)DidVipTV.playbackStarted();return 'video'}" +
-            "var q='button,[role=button],[aria-label],.play,.play-button,.vjs-big-play-button,.jw-icon-playback';" +
+            "var all=docs(window,[]),active=document.activeElement;if(requireFocus){var label=((active&&active.textContent)||'')+' '+((active&&active.getAttribute&&active.getAttribute('aria-label'))||'');var player=active&&(active.tagName==='VIDEO'||active.tagName==='IFRAME'||active.closest('video,.video,.player,[class*=player],[data-action=play]'));if(!player&&!/regarder|play|lecture/i.test(label))return 'focus-not-player'}" +
+            "var v=null;for(var i=0;i<all.length&&!v;i++)v=all[i].querySelector('video');" +
+            "if(v){try{if(v.paused){var p=v.play();if(p&&p.catch)p.catch(function(){})}}catch(e){}full(v);if(window.DidVipTV)DidVipTV.playbackStarted();return 'video'}" +
+            "var q='.btn-play,[data-action=play],button,[role=button],[aria-label],.play,.play-button,.vjs-big-play-button,.jw-icon-playback';" +
             "for(var d=0;d<all.length;d++){var b=all[d].querySelectorAll(q);for(var j=0;j<b.length;j++){var t=((b[j].getAttribute('aria-label')||'')+' '+(b[j].textContent||'')+' '+(b[j].className||'')).toLowerCase();if(/play|lecture|regarder/.test(t)){b[j].click();if(window.DidVipTV)DidVipTV.playbackStarted();return 'control'}}}" +
             "var frame=document.querySelector('iframe');if(frame){frame.focus();frame.click();return 'iframe'}return 'none'" +
             "})();";
