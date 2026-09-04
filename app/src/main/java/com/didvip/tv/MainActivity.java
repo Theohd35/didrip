@@ -187,8 +187,10 @@ public final class MainActivity extends Activity {
             try {
                 if (value != null && !"null".equals(value)) {
                     org.json.JSONArray point = new org.json.JSONArray(value);
-                    float x = (float) point.getDouble(0) * webView.getWidth();
-                    float y = (float) point.getDouble(1) * webView.getHeight();
+                    float viewportWidth = (float) point.getDouble(2);
+                    float viewportHeight = (float) point.getDouble(3);
+                    float x = (float) point.getDouble(0) * webView.getWidth() / viewportWidth;
+                    float y = (float) point.getDouble(1) * webView.getHeight() / viewportHeight;
                     dispatchWebViewTap(x, y);
                     return;
                 }
@@ -260,8 +262,11 @@ public final class MainActivity extends Activity {
             "var e=document.activeElement;if(!e)return null;" +
             "var q='.play-btn,.btn-play,[data-action=play],.vjs-big-play-button,.plyr__control[data-plyr=play],video,iframe,.video,.player,[class*=player]';" +
             "if(!(e.matches(q)||e.closest('.video,.player,[class*=player]')))return null;" +
-            "var r=e.getBoundingClientRect();if(r.width<2||r.height<2)return null;" +
-            "return [(r.left+r.width/2)/window.innerWidth,(r.top+r.height/2)/window.innerHeight]" +
+            "var rect=e.getBoundingClientRect();if(rect.width<2||rect.height<2)return null;" +
+            "var centerX=rect.left+(rect.width/2),centerY=rect.top+(rect.height/2);" +
+            "function videoIn(n){var v=n.matches&&n.matches('video')?n:n.querySelector&&n.querySelector('video');if(v)return v;var frames=n.matches&&n.matches('iframe')?[n]:(n.querySelectorAll?Array.prototype.slice.call(n.querySelectorAll('iframe')):[]);for(var i=0;i<frames.length;i++)try{v=frames[i].contentDocument&&frames[i].contentDocument.querySelector('video');if(v)return v}catch(x){}return null}" +
+            "var v=videoIn(e);if(v){try{if(v.paused){var p=v.play();if(p&&p.catch)p.catch(function(){})}var f=v.requestFullscreen||v.webkitRequestFullscreen||v.webkitEnterFullscreen;if(f){var fp=f.call(v);if(fp&&fp.catch)fp.catch(function(){})}}catch(x){}if(window.DidVipTV)DidVipTV.playbackStarted()}" +
+            "return [centerX,centerY,window.innerWidth,window.innerHeight]" +
             "})();";
 
     /**
